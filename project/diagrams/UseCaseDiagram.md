@@ -40,3 +40,5 @@ createBrand -.> linkProduct: <<extend>>
 viewBrends -.> rebranding: <<include>>
 rebranding -.> linkProduct: <<extend>>
 viewBrends -.> deleteBrand: <<include>>
+
+@enduml
