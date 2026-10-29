@@ -1,2 +1,2 @@
-![BPMN Diagram](BPMN Diagram.png)
+![BPMN Diagram](BPMNDiagram.png)
 
