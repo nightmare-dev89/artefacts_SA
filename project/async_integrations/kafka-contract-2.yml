@@ -1,0 +1,139 @@
+asyncapi: 3.0.0
+info:
+    title: WithdrawService
+    version: 1.0.0
+    description: "Создание поручений на вывод средств со всеми данными для расчета итогового дохода инвестора"
+defaultContentType: application/json
+
+servers:
+    production:
+        host: prod.kafkacluster.withdrawService:28092
+        protocol: kafka-secure
+        protocolVersion: "3.7"
+        security:
+            - $ref: "#/components/securitySchemes/saslScram"
+    test:
+        host: test.kafkacluster.withdrawService:28092
+        protocol: kafka
+        protocolVersion: "4.0"
+
+channels:
+    WithdrawInvest:
+        address: topic.kafka.withdraw-investment
+        description: "Вывод инвестиций"
+        messages:
+            WithdrawInvest:
+                $ref: "#/components/messages/WithdrawInvest"
+        bindings:
+            kafka:
+                topic: topic.kafka.withdraw-investment
+                partitions: 12
+                replicas: 3
+                topicConfiguration:
+                    cleanup.policy: [delete]
+                    retention.ms: 604800000
+                bindingVersion: "0.5.0"
+
+operations:
+    sendWithdrawInvest:
+        action: send
+        channel:
+            $ref: "#/channels/WithdrawInvest"
+        bindings:
+            kafka:
+                clientId:
+                    type: string
+                    const: withdraw-investment
+                bindingVersion: "0.5.0"
+
+components:
+    securitySchemes:
+        saslScram:
+            type: scramSha512
+            description: SASL/SCRAM поверх TLS
+
+    messages:
+        WithdrawInvest:
+            name: WithdrawInvest
+            title: "Заявка на вывод инвестиций"
+            contentType: application/json
+            headers:
+                $ref: "#/components/schemas/EventHeaders"
+            payload:
+                $ref: "#/components/schemas/WithdrawInvestPayload"
+            bindings:
+                kafka:
+                    key:
+                        const: withdrawInvestment
+                        type: string
+                        description: "Вывод инвестиций"
+                    bindingVersion: "0.5.0"
+
+    schemas:
+        EventHeaders:
+            type: object
+            required: [idempotencyKey]
+            properties:
+                idempotencyKey:
+                    description: "Уникальный ключ идемпотентности для защиты от дублирования обработки сообщений при повторной доставке"
+                    type: string
+                    format: uuid
+
+        WithdrawInvestPayload:
+            type: object
+            required: [user, investment, depositAccount, createdAt]
+            properties:
+                user:
+                    type: object
+                    required: [userId, name, surname, contactDetails]
+                    properties:
+                        userId:
+                            type: string
+                            format: uuid
+                        name:
+                            type: string
+                        surname:
+                            type: string
+                        contactDetails:
+                            type: object
+                            required: [phoneNumber, email]
+                            properties:
+                                phoneNumber:
+                                    type: string
+                                email:
+                                    type: string
+                                    format: email
+                investment:
+                    type: object
+                    required: [investmentDays, dataInvest, quantity]
+                    properties:
+                        investmentDays:
+                            type: integer
+                        dataInvest:
+                            type: object
+                            required: [investId, yieldPercent, currency, price]
+                            properties:
+                                investId:
+                                    type: string
+                                    format: uuid
+                                yieldPercent:
+                                    type: number
+                                currency:
+                                    type: string
+                                    enum: [RUB, USD, EUR]
+                                price:
+                                    type: number
+                        quantity:
+                            type: integer
+                depositAccount:
+                    type: object
+                    required: [accountNumber, bankName]
+                    properties:
+                        accountNumber:
+                            type: string
+                            pattern: '^\d{20}$'
+                        bankName:
+                            type: string
+                createdAt:
+                    type: string
+                    format: date-time
