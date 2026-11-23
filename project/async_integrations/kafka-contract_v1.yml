@@ -1,0 +1,219 @@
+asyncapi: 3.0.0
+info:
+    title: Delivery Service
+    version: 1.0.0
+    description: "Сервис логистики и управления доставками. Потребляет события готовности заказов и публикует события назначения курьера или ПВЗ"
+defaultContentType: application/json
+
+servers:
+    production:
+        host: kafka-1.prod.internal:28092
+        protocol: kafka-secure
+        protocolVersion: "3.7"
+        security:
+            - $ref: "#/components/securitySchemes/saslScram"
+    test:
+        host: kafka-1.test.internal:28092
+        protocol: kafka
+        protocolVersion: "4.0"
+
+channels:
+    OrderReadyDelivery:
+        address: topic.kafka.delivery.order_ready
+        description: "Заказ готов к доставке"
+        messages:
+            OrderReadyDelivery:
+                $ref: "#/components/messages/OrderReadyDelivery"
+        bindings:
+            kafka:
+                topic: topic.kafka.delivery.order_ready
+                partitions: 12
+                replicas: 3
+                topicConfiguration:
+                    cleanup.policy: [delete]
+                    retention.ms: 604800000
+                bindingVersion: "0.5.0"
+
+    DeliveryAssigned:
+        address: topic.kafka.delivery.assigned
+        description: "Доставка назначена"
+        messages:
+            DeliveryAssigned:
+                $ref: "#/components/messages/DeliveryAssigned"
+        bindings:
+            kafka:
+                topic: topic.kafka.delivery.assigned
+                partitions: 12
+                replicas: 3
+                topicConfiguration:
+                    cleanup.policy: [delete]
+                    retention.ms: 604800000
+                bindingVersion: "0.5.0"
+operations:
+    receiveOrderReadyForDelivery:
+        action: receive
+        channel:
+            $ref: "#/channels/OrderReadyDelivery"
+        bindings:
+            kafka:
+                groupId:
+                    type: string
+                    const: logistics-service.consumer
+                bindingVersion: "0.5.0"
+
+    sendDeliveryAssigned:
+        action: send
+        channel:
+            $ref: "#/channels/DeliveryAssigned"
+        bindings:
+            kafka:
+                clientId:
+                    type: string
+                    const: logistics-service
+                bindingVersion: "0.5.0"
+
+components:
+    securitySchemes:
+        saslScram:
+            type: scramSha512
+            description: SASL/SCRAM поверх TLS
+
+    messages:
+        OrderReadyDelivery:
+            name: OrderReadyDelivery
+            title: "Заказ готов к доставке"
+            contentType: application/json
+            headers:
+                $ref: "#/components/schemas/EventHeaders"
+            payload:
+                $ref: "#/components/schemas/OrderReadyDeliveryPayload"
+            bindings:
+                kafka:
+                    key:
+                        type: string
+                        format: uuid
+                        description: "orderId гарантирует порядок событий по одному заказу"
+                    bindingVersion: "0.5.0"
+            examples:
+                - name: readyOrderExample
+                  headers:
+                      idempotencyKey: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e88"
+                  payload:
+                      orderId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e77"
+                      userId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e44"
+                      deliveryAddress:
+                          street: "ул. Центральная, д. 12"
+                          city: "Москва"
+                          zip: "123456"
+                          coordinates: "55.7558, 37.6173"
+                      itemsWeight: 0.45
+                      itemsVolume: 0.11
+                      createdAt: "2026-09-10T12:31:05.412Z"
+
+        DeliveryAssigned:
+            name: DeliveryAssigned
+            title: "Доставка назначена"
+            contentType: application/json
+            headers:
+                $ref: "#/components/schemas/EventHeaders"
+            payload:
+                $ref: "#/components/schemas/DeliveryAssignedPayload"
+            bindings:
+                kafka:
+                    key:
+                        type: string
+                        format: uuid
+                        description: "orderId гарантирует порядок событий по одному заказу"
+                    bindingVersion: "0.5.0"
+            examples:
+                - name: CourierAssignedExample
+                  headers:
+                      idempotencyKey: "018f3a1e-1c4b-7a41-9e2f-3b1d5c6a7e89"
+                  payload:
+                      orderId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e47"
+                      deliveryId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e56"
+                      courierId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e78"
+                      estimatedDeliveryTime: "2026-01-20T20:18:00Z"
+                      trackingNumber: "45898575"
+
+                - name: PickupPointAssignedExample
+                  headers:
+                      idempotencyKey: "018f3a1e-1c4b-7a41-9e2f-3b1d5c6a7e89"
+                  payload:
+                      orderId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e47"
+                      deliveryId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e56"
+                      pickupPointId: "018f3a1e-1c2b-7a41-9e2f-3b1d5c6a7e96"
+                      estimatedDeliveryTime: "2026-01-20T20:18:00Z"
+                      trackingNumber: "45898575"
+
+    schemas:
+        EventHeaders:
+            type: object
+            required: [idempotencyKey]
+            properties:
+                idempotencyKey:
+                    description: "Уникальный ключ идемпотентности для защиты от дублирования обработки сообщений при повторной доставке"
+                    type: string
+                    format: uuid
+
+        OrderReadyDeliveryPayload:
+            type: object
+            required:
+                [
+                    orderId,
+                    userId,
+                    deliveryAddress,
+                    itemsWeight,
+                    itemsVolume,
+                    createdAt,
+                ]
+            properties:
+                orderId:
+                    type: string
+                    format: uuid
+                userId:
+                    type: string
+                    format: uuid
+                deliveryAddress:
+                    type: object
+                    required: [street, city, zip, coordinates]
+                    properties:
+                        street:
+                            type: string
+                        city:
+                            type: string
+                        zip:
+                            type: string
+                        coordinates:
+                            type: string
+                itemsWeight:
+                    type: number
+                itemsVolume:
+                    type: number
+                createdAt:
+                    type: string
+                    format: date-time
+
+        DeliveryAssignedPayload:
+            type: object
+            required: [orderId, deliveryId, estimatedDeliveryTime]
+            properties:
+                orderId:
+                    type: string
+                    format: uuid
+                deliveryId:
+                    type: string
+                    format: uuid
+                courierId:
+                    description: "ID курьера. Заполняется, если выбрана курьерская доставка"
+                    type: string
+                    format: uuid
+                pickupPointId:
+                    description: "ID пункта выдачи. Заполняется, если выбрана доставка в ПВЗ"
+                    type: string
+                    format: uuid
+                estimatedDeliveryTime:
+                    type: string
+                    format: date-time
+                trackingNumber:
+                    type: string
